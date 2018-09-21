@@ -1,6 +1,7 @@
 from builtins import range
 from builtins import object
 import numpy as np
+import pdb, traceback, sys
 
 from cs231n.layers import *
 from cs231n.layer_utils import *
@@ -104,7 +105,6 @@ class TwoLayerNet(object):
         # automated tests, make sure that your L2 regularization includes a factor #
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
-        # handwriting this function?
         # no need to using scores
         reg = self.reg
         W1 = self.params['W1']
@@ -183,8 +183,10 @@ class FullyConnectedNet(object):
         ############################################################################
         hidden_dims = [input_dim] + hidden_dims
         for idx in range(1, self.num_layers):
-            # self.params['gamma' + str(idx)] = np.ones((1, hidden_dims[idx]))
-            # self.params['beta' + str(idx)] = np.zeros((1, hidden_dims[idx]))
+            # used to achieve the batch-normalization
+            if self.normalization == 'batchnorm':                    
+                self.params['gamma' + str(idx)] = np.ones((hidden_dims[idx], ))
+                self.params['beta' + str(idx)] = np.zeros((hidden_dims[idx], ))
             self.params['W' + str(idx)] = np.random.randn(hidden_dims[idx - 1], hidden_dims[idx]) * weight_scale
             self.params['b' + str(idx)] = np.zeros((1, hidden_dims[idx]))
         self.params['W' + str(self.num_layers)] = np.random.randn(hidden_dims[-1], num_classes) * weight_scale
@@ -253,13 +255,24 @@ class FullyConnectedNet(object):
         caches = []
         outs.append(X)
         caches.append(None)
-        # how to write beautilful
+        # add a None object in the head of bn_params slist to make index match the the order of layer 
+        bn_params = [None] + self.bn_params
         for idx in range(1, self.num_layers):
-            cur_w = self.params['W' + str(idx)]
-            cur_b = self.params['b' + str(idx)]
+            # cur_w = self.params['W' + str(idx)]
+            # cur_b = self.params['b' + str(idx)]
             cur_out = None
             cur_cache = None
-            cur_out, cur_cache = affine_relu_forward(outs[idx - 1], cur_w, cur_b)
+            if self.normalization == 'batchnorm':
+                cur_out, cur_cache = affine_bn_relu_forward(outs[idx - 1], \
+                                                            self.params['W' + str(idx)],\
+                                                            self.params['b' + str(idx)],\
+                                                            self.params['gamma' + str(idx)],\
+                                                            self.params['beta' + str(idx)],\
+                                                            bn_params[idx])
+            else:
+                cur_out, cur_cache = affine_relu_forward(outs[idx - 1],\
+                                                         self.params['W' + str(idx)],\
+                                                         self.params['b' + str(idx)])
             outs.append(cur_out)
             caches.append(cur_cache)
         scores, tmp_cache = affine_forward(outs[-1], self.params['W' + str(self.num_layers)], self.params['b' + str(self.num_layers)])
@@ -288,19 +301,25 @@ class FullyConnectedNet(object):
         n = self.num_layers
         douts = [None] * (n + 1)
         loss, douts[n] = softmax_loss(outs[n], y)
+        # cur_dw, cur_db, cur_dout, cur_dbeta, cur_dgamma = (None,) * 5
         for idx in range(n, 0, -1):
-            cur_dw = None
-            cur_db = None
-            cur_dout = None
             if idx == n:
-                cur_dout, cur_dw, cur_db = affine_backward(douts[idx], caches[idx])
+                douts[idx - 1],\
+                grads['W' + str(idx)],\
+                grads['b' + str(idx)] = affine_backward(douts[idx], caches[idx])
             else:
-                cur_dout, cur_dw, cur_db = affine_relu_backward(douts[idx], caches[idx])
-
-            douts[idx - 1], grads['W' + str(idx)], grads['b' + str(idx)] = cur_dout, cur_dw, cur_db
+                if self.normalization == 'batchnorm':
+                    douts[idx - 1],\
+                    grads['W' + str(idx)], \
+                    grads['b' + str(idx)], \
+                    grads['gamma' + str(idx)],\
+                    grads['beta' + str(idx)] = affine_bn_relu_backward(douts[idx], caches[idx])
+                else:
+                    douts[idx - 1],\
+                    grads['W' + str(idx)],\
+                    grads['b' + str(idx)] = affine_relu_backward(douts[idx], caches[idx])   
             loss += 0.5 * self.reg * np.sum(np.square(self.params['W' + str(idx)]))
             grads['W' + str(idx)] += self.reg * self.params['W' + str(idx)]
-
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
