@@ -162,7 +162,9 @@ class FullyConnectedNet(object):
           will make the dropout layers deteriminstic so we can gradient check the
           model.
         """
+        
         self.normalization = normalization
+        # dropout serve as the probability of keeping node in hidden layer
         self.use_dropout = dropout != 1
         self.reg = reg
         self.num_layers = 1 + len(hidden_dims)
@@ -269,10 +271,14 @@ class FullyConnectedNet(object):
                                                             self.params['gamma' + str(idx)],\
                                                             self.params['beta' + str(idx)],\
                                                             bn_params[idx])
+                
             else:
                 cur_out, cur_cache = affine_relu_forward(outs[idx - 1],\
                                                          self.params['W' + str(idx)],\
                                                          self.params['b' + str(idx)])
+            if self.use_dropout:
+                cur_out, do_cache = dropout_forward(cur_out, self.dropout_param)
+                cur_cache = cur_cache + (do_cache, )
             outs.append(cur_out)
             caches.append(cur_cache)
         scores, tmp_cache = affine_forward(outs[-1], self.params['W' + str(self.num_layers)], self.params['b' + str(self.num_layers)])
@@ -308,6 +314,9 @@ class FullyConnectedNet(object):
                 grads['W' + str(idx)],\
                 grads['b' + str(idx)] = affine_backward(douts[idx], caches[idx])
             else:
+                if self.use_dropout:
+                    douts[idx] = dropout_backward(douts[idx], caches[idx][-1])
+                    caches[idx] = caches[idx][: -1]
                 if self.normalization == 'batchnorm':
                     douts[idx - 1],\
                     grads['W' + str(idx)], \

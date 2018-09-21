@@ -38,6 +38,24 @@ def affine_bn_relu_forward(x, w, b, gamma, beta, bn_param):
     cache = (af_cache, bn_cache, relu_cache)
     return out, cache
 
+def affine_bn_relu_dropout_forward(x, w, b, gamma, beta, bn_param, dropout_param):
+    a, af_cache = affine_forward(x, w, b)
+    an, bn_cache = batchnorm_forward(a, gamma, beta, bn_param)
+    ru, relu_cache = relu_forward(an)
+    out, do_cache = dropout_forward(ru, dropout_param)
+    cache = (af_cache, bn_cache, relu_cache, do_cache)
+    return out, cache
+
+
+def affine_bn_relu_dropout_backward(dout, cache):
+    af_cache, bn_cache, relu_cache, do_cache = cache
+    ddo = dropout_backward(dout, do_cache)
+    dan = relu_backward(ddo, relu_cache)
+    da, dgamma, dbeta = batchnorm_backward(dan, bn_cache)
+    dx, dw, db = affine_backward(da, af_cache)
+    return dx, dw, db, dgamma, dbeta
+
+
 
 def affine_bn_relu_backward(dout, cache):
     af_cache, bn_cache, relu_cache = cache
