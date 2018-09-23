@@ -4,6 +4,14 @@ standard_library.install_aliases()
 from builtins import range
 import urllib.request, urllib.error, urllib.parse, os, tempfile
 
+## only for someone who use shadowsocks as their bypassing tool
+## set shadowsocks proxy to download image from flickr
+proxy_adress,proxy_port = "127.0.0.1", 1080
+import socks
+import socket
+socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, proxy_adress, proxy_port)
+socket.socket = socks.socksocket
+
 import numpy as np
 from scipy.misc import imread, imresize
 
@@ -59,11 +67,14 @@ def image_from_url(url):
     We write the image to a temporary file then read it back. Kinda gross.
     """
     try:
+        
         f = urllib.request.urlopen(url)
-        _, fname = tempfile.mkstemp()
+        fd, fname = tempfile.mkstemp()
         with open(fname, 'wb') as ff:
             ff.write(f.read())
         img = imread(fname)
+        # need to add this line to work with windows enviroment
+        os.close(fd)
         os.remove(fname)
         return img
     except urllib.error.URLError as e:
