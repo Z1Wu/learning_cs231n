@@ -140,11 +140,22 @@ class CaptioningRNN(object):
         # Note also that you are allowed to make use of functions from layers.py   #
         # in your implementation, if needed.                                       #
         ############################################################################
-        pass
+        # get the image feature from the image 
+        h0, aff_cache = affine_forward(features, W_proj, b_proj)
+        vec_capations_in, embed_cache = word_embedding_forward(captions_in, W_embed)
+        # vec_capations_out, embed_cache2 = word_embedding_forward(captions_out, W_embed)
+        h_out, rnn_cache = rnn_forward(vec_capations_in, h0, Wx, Wh, b)
+        scores, taff_cache = temporal_affine_forward(h_out, W_vocab, b_vocab)
+        loss, d_scores = temporal_softmax_loss(scores, captions_out, mask)
+        
+        d_h_out,grads['W_vocab'], grads['b_vocab'] = temporal_affine_backward(d_scores, taff_cache)
+        # d_h_out,grads['W_vocab'], grads['b_vocab'] = temporal_affine_backward(d_scores, taff_cache)
+        d_vec_in, d_h0, grads['Wx'], grads['Wh'], grads['b']= rnn_backward(d_h_out, rnn_cache)
+        grads['W_embed'] = word_embedding_backward(d_vec_in, embed_cache)
+        _, grads['W_proj'], grads['b_proj'] = affine_backward(d_h0, aff_cache)        
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
-
         return loss, grads
 
 
@@ -155,8 +166,8 @@ class CaptioningRNN(object):
 
         At each timestep, we embed the current word, pass it and the previous hidden
         state to the RNN to get the next hidden state, use the hidden state to get
-        scores for all vocab words, and choose the word with the highest score as
-        the next word. The initial hidden state is computed by applying an affine
+        scores for all vocab words, and ''choose the word with the highest score as
+        the next word''. The initial hidden state is computed by applying an affine
         transform to the input image features, and the initial word is the <START>
         token.
 
@@ -205,7 +216,20 @@ class CaptioningRNN(object):
         # NOTE: we are still working over minibatches in this function. Also if   #
         # you are using an LSTM, initialize the first cell state to zeros.        #
         ###########################################################################
-        pass
+        
+        prev_h, _ = affine_forward(features, W_proj, b_proj)
+        cur_input_x = np.zeros((N, 1))
+        cur_input_x = self._start
+        captions[:, 0] = cur_input_x
+        for t in range(1, max_length):
+          vec_input_x, _ = word_embedding_forward(cur_input_x, W_embed)
+          next_h, _ = rnn_step_forward(vec_input_x, prev_h, Wx, Wh, b)
+          scores, _ = affine_forward(next_h, W_vocab, b_vocab)
+          # Question: The lecturer recommand to sample the next input from the softmax probability in
+          # the lecture vedio,  why we just get the highest score vocabulary here.
+          cur_input_x = np.argmax(scores, axis = 1)
+          captions[: ,t] = cur_input_x 
+          prev_h = next_h
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
