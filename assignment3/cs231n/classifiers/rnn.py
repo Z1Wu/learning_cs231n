@@ -1,6 +1,7 @@
 from builtins import range
 from builtins import object
 import numpy as np
+import pdb, traceback, sys
 
 from cs231n.layers import *
 from cs231n.rnn_layers import *
@@ -144,13 +145,21 @@ class CaptioningRNN(object):
         h0, aff_cache = affine_forward(features, W_proj, b_proj)
         vec_capations_in, embed_cache = word_embedding_forward(captions_in, W_embed)
         # vec_capations_out, embed_cache2 = word_embedding_forward(captions_out, W_embed)
-        h_out, rnn_cache = rnn_forward(vec_capations_in, h0, Wx, Wh, b)
+        unit_caches = None # cache for the lstm or vanilla rnn unit
+        if self.cell_type == 'lstm':
+          h_out, unit_caches = lstm_forward(vec_capations_in, h0, Wx, Wh, b)
+        else:
+          h_out, unit_caches = rnn_forward(vec_capations_in, h0, Wx, Wh, b)
+        # h_out, rnn_cache = rnn_forward(vec_capations_in, h0, Wx, Wh, b)
         scores, taff_cache = temporal_affine_forward(h_out, W_vocab, b_vocab)
         loss, d_scores = temporal_softmax_loss(scores, captions_out, mask)
         
         d_h_out,grads['W_vocab'], grads['b_vocab'] = temporal_affine_backward(d_scores, taff_cache)
         # d_h_out,grads['W_vocab'], grads['b_vocab'] = temporal_affine_backward(d_scores, taff_cache)
-        d_vec_in, d_h0, grads['Wx'], grads['Wh'], grads['b']= rnn_backward(d_h_out, rnn_cache)
+        if self.cell_type == 'lstm': 
+          d_vec_in, d_h0, grads['Wx'], grads['Wh'], grads['b']= lstm_backward(d_h_out, unit_caches)
+        else:
+          d_vec_in, d_h0, grads['Wx'], grads['Wh'], grads['b']= rnn_backward(d_h_out, unit_caches)
         grads['W_embed'] = word_embedding_backward(d_vec_in, embed_cache)
         _, grads['W_proj'], grads['b_proj'] = affine_backward(d_h0, aff_cache)        
         ############################################################################
@@ -216,20 +225,27 @@ class CaptioningRNN(object):
         # NOTE: we are still working over minibatches in this function. Also if   #
         # you are using an LSTM, initialize the first cell state to zeros.        #
         ###########################################################################
-        
         prev_h, _ = affine_forward(features, W_proj, b_proj)
-        cur_input_x = np.zeros((N, 1))
-        cur_input_x = self._start
+        prev_c = np.zeros_like(prev_h)
+        cur_input_x = np.zeros((N), dtype = np.int32)
+        cur_input_x += self._start
         captions[:, 0] = cur_input_x
         for t in range(1, max_length):
           vec_input_x, _ = word_embedding_forward(cur_input_x, W_embed)
-          next_h, _ = rnn_step_forward(vec_input_x, prev_h, Wx, Wh, b)
+          if self.cell_type == 'lstm' :
+            next_h, next_c, _ = lstm_step_forward(vec_input_x, prev_h, prev_c, Wx, Wh, b)
+          else:
+            next_h, _ = rnn_step_forward(vec_input_x, prev_h, Wx, Wh, b)
           scores, _ = affine_forward(next_h, W_vocab, b_vocab)
           # Question: The lecturer recommand to sample the next input from the softmax probability in
           # the lecture vedio,  why we just get the highest score vocabulary here.
+          # update for next iteration
           cur_input_x = np.argmax(scores, axis = 1)
           captions[: ,t] = cur_input_x 
           prev_h = next_h
+          if self.cell_type == 'lstm':
+            prev_c = next_c
+          
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
